@@ -2,15 +2,39 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useProfile } from '@/hooks/useProfile'
-import { LayoutDashboard, Users, BarChart3, ClipboardList, Calendar, Megaphone, FileUp, LogOut, School, GraduationCap, MessageSquare, Grid3X3, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, Users, BarChart3, ClipboardList, Calendar, Megaphone, LogOut, School, GraduationCap, MessageSquare, Grid3X3, ChevronRight } from 'lucide-react'
 
 const adminNav=[
-  {section:'Overview',items:[{href:'/admin',icon:LayoutDashboard,label:'Dashboard'},{href:'/admin/pengumuman',icon:Megaphone,label:'Pengumuman'}]},
-  {section:'Akademik',items:[{href:'/admin/siswa',icon:GraduationCap,label:'Data Siswa'},{href:'/admin/guru',icon:Users,label:'Data Guru'},{href:'/admin/kelas',icon:Grid3X3,label:'Kelas & Rombel'},{href:'/admin/jadwal',icon:Calendar,label:'Jadwal Pelajaran'},{href:'/admin/nilai',icon:BarChart3,label:'Rekap Nilai'},{href:'/admin/absensi',icon:ClipboardList,label:'Rekap Absensi'}]},
-  {section:'PPDB & Data',items:[{href:'/admin/ppdb',icon:School,label:'PPDB Online'},{href:'/admin/import',icon:FileUp,label:'Import Excel'}]},
+  {section:'Overview',items:[
+    {href:'/admin',icon:LayoutDashboard,label:'Dashboard'},
+    {href:'/admin/pengumuman',icon:Megaphone,label:'Pengumuman'},
+  ]},
+  {section:'Akademik',items:[
+    {href:'/admin/siswa',icon:GraduationCap,label:'Data Siswa'},
+    {href:'/admin/guru',icon:Users,label:'Data Guru'},
+    {href:'/admin/kelas',icon:Grid3X3,label:'Kelas & Rombel'},
+    {href:'/admin/jadwal',icon:Calendar,label:'Jadwal Pelajaran'},
+    {href:'/admin/nilai',icon:BarChart3,label:'Rekap Nilai'},
+    {href:'/admin/absensi',icon:ClipboardList,label:'Rekap Absensi'},
+  ]},
+  {section:'PPDB',items:[
+    {href:'/admin/ppdb',icon:School,label:'PPDB Online'},
+  ]},
 ]
-const guruNav=[{section:'Menu Guru',items:[{href:'/guru',icon:LayoutDashboard,label:'Dashboard'},{href:'/guru/absensi',icon:ClipboardList,label:'Input Absensi'},{href:'/guru/nilai',icon:BarChart3,label:'Input Nilai'},{href:'/guru/jadwal',icon:Calendar,label:'Jadwal Saya'}]}]
-const ortuNav=[{section:'Menu Orang Tua',items:[{href:'/ortu',icon:LayoutDashboard,label:'Dashboard'},{href:'/ortu/nilai',icon:BarChart3,label:'Nilai Anak'},{href:'/ortu/absensi',icon:ClipboardList,label:'Absensi Anak'},{href:'/ortu/izin',icon:MessageSquare,label:'Pengajuan Izin'}]}]
+
+const guruNav=[{section:'Menu Guru',items:[
+  {href:'/guru',icon:LayoutDashboard,label:'Dashboard'},
+  {href:'/guru/absensi',icon:ClipboardList,label:'Input Absensi'},
+  {href:'/guru/nilai',icon:BarChart3,label:'Input Nilai'},
+  {href:'/guru/jadwal',icon:Calendar,label:'Jadwal Saya'},
+]}]
+
+const ortuNav=[{section:'Menu Orang Tua',items:[
+  {href:'/ortu',icon:LayoutDashboard,label:'Dashboard'},
+  {href:'/ortu/nilai',icon:BarChart3,label:'Nilai Anak'},
+  {href:'/ortu/absensi',icon:ClipboardList,label:'Absensi Anak'},
+  {href:'/ortu/izin',icon:MessageSquare,label:'Pengajuan Izin'},
+]}]
 
 export default function Sidebar({isOpen,onClose}:{isOpen:boolean;onClose:()=>void}) {
   const {profile,signOut}=useProfile()
