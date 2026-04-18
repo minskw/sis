@@ -1,293 +1,384 @@
 -- ============================================================
--- SIS MIN SINGKAWANG - SUPABASE SCHEMA
--- Jalankan di Supabase SQL Editor
+-- SISFO MIN SINGKAWANG — SUPABASE DATABASE SCHEMA LENGKAP
+-- Jalankan di: Supabase Dashboard > SQL Editor
 -- ============================================================
 
--- 1. PROFILES (extends auth.users)
-CREATE TABLE IF NOT EXISTS profiles (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE NOT NULL,
-  full_name TEXT NOT NULL,
-  role TEXT NOT NULL CHECK (role IN ('admin','guru','ortu')),
-  phone TEXT,
-  avatar_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+-- ─── EXTENSIONS ─────────────────────────────────────────────
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+-- ─── 1. PROFILES (extends auth.users) ───────────────────────
+CREATE TABLE IF NOT EXISTS public.profiles (
+  id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email       TEXT NOT NULL,
+  full_name   TEXT,
+  role        TEXT NOT NULL DEFAULT 'ortu' CHECK (role IN ('admin','guru','ortu')),
+  phone       TEXT,
+  avatar_url  TEXT,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 2. GURU
-CREATE TABLE IF NOT EXISTS guru (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  nip TEXT UNIQUE,
-  nama TEXT NOT NULL,
-  jenis_kelamin CHAR(1) CHECK (jenis_kelamin IN ('L','P')),
-  tempat_lahir TEXT,
-  tanggal_lahir DATE,
-  alamat TEXT,
-  email TEXT,
-  phone TEXT,
-  jabatan TEXT,
-  status_kepegawaian TEXT DEFAULT 'GTT' CHECK (status_kepegawaian IN ('PNS','GTT','PTT')),
-  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 3. KELAS
-CREATE TABLE IF NOT EXISTS kelas (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  nama TEXT NOT NULL,
-  tingkat INTEGER NOT NULL CHECK (tingkat BETWEEN 1 AND 6),
-  tahun_ajaran TEXT NOT NULL,
-  wali_kelas_id UUID REFERENCES guru(id) ON DELETE SET NULL,
-  ruang TEXT,
-  kapasitas INTEGER DEFAULT 32,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 4. SISWA
-CREATE TABLE IF NOT EXISTS siswa (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  nisn TEXT UNIQUE,
-  nik TEXT UNIQUE,
-  nama TEXT NOT NULL,
-  jenis_kelamin CHAR(1) CHECK (jenis_kelamin IN ('L','P')),
-  tempat_lahir TEXT,
-  tanggal_lahir DATE,
-  alamat TEXT,
-  kelas_id UUID REFERENCES kelas(id) ON DELETE SET NULL,
-  tahun_masuk INTEGER,
-  status TEXT DEFAULT 'aktif' CHECK (status IN ('aktif','lulus','keluar')),
-  foto_url TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 5. ORTU_SISWA (link user ortu ke siswa)
-CREATE TABLE IF NOT EXISTS ortu_siswa (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  siswa_id UUID REFERENCES siswa(id) ON DELETE CASCADE NOT NULL,
-  hubungan TEXT DEFAULT 'wali' CHECK (hubungan IN ('ayah','ibu','wali')),
-  UNIQUE(user_id, siswa_id)
-);
-
--- 6. MATA PELAJARAN
-CREATE TABLE IF NOT EXISTS mata_pelajaran (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  nama TEXT NOT NULL,
-  kode TEXT UNIQUE,
-  kkm INTEGER DEFAULT 75,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 7. JADWAL PELAJARAN
-CREATE TABLE IF NOT EXISTS jadwal_pelajaran (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  kelas_id UUID REFERENCES kelas(id) ON DELETE CASCADE NOT NULL,
-  mapel_id UUID REFERENCES mata_pelajaran(id) ON DELETE CASCADE NOT NULL,
-  guru_id UUID REFERENCES guru(id) ON DELETE SET NULL,
-  hari TEXT NOT NULL CHECK (hari IN ('Senin','Selasa','Rabu','Kamis','Jumat','Sabtu')),
-  jam_mulai TIME NOT NULL,
-  jam_selesai TIME NOT NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 8. ABSENSI
-CREATE TABLE IF NOT EXISTS absensi (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  siswa_id UUID REFERENCES siswa(id) ON DELETE CASCADE NOT NULL,
-  kelas_id UUID REFERENCES kelas(id) ON DELETE CASCADE NOT NULL,
-  tanggal DATE NOT NULL,
-  status CHAR(1) NOT NULL CHECK (status IN ('H','S','I','A')),
-  keterangan TEXT,
-  guru_id UUID REFERENCES guru(id) ON DELETE SET NULL,
-  izin_id UUID,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(siswa_id, tanggal)
-);
-
--- 9. IZIN
-CREATE TABLE IF NOT EXISTS izin (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  siswa_id UUID REFERENCES siswa(id) ON DELETE CASCADE NOT NULL,
-  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-  tanggal_mulai DATE NOT NULL,
-  tanggal_selesai DATE NOT NULL,
-  jenis TEXT NOT NULL CHECK (jenis IN ('sakit','izin','lainnya')),
-  keterangan TEXT NOT NULL,
-  lampiran_url TEXT,
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','disetujui','ditolak')),
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 10. NILAI
-CREATE TABLE IF NOT EXISTS nilai (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  siswa_id UUID REFERENCES siswa(id) ON DELETE CASCADE NOT NULL,
-  mapel_id UUID REFERENCES mata_pelajaran(id) ON DELETE CASCADE NOT NULL,
-  kelas_id UUID REFERENCES kelas(id) ON DELETE CASCADE NOT NULL,
-  semester INTEGER NOT NULL CHECK (semester IN (1,2)),
-  tahun_ajaran TEXT NOT NULL,
-  nilai_tugas NUMERIC(5,2),
-  nilai_uts NUMERIC(5,2),
-  nilai_uas NUMERIC(5,2),
-  nilai_akhir NUMERIC(5,2) GENERATED ALWAYS AS (
-    ROUND((COALESCE(nilai_tugas,0)*0.3 + COALESCE(nilai_uts,0)*0.3 + COALESCE(nilai_uas,0)*0.4)::NUMERIC, 2)
-  ) STORED,
-  guru_id UUID REFERENCES guru(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(siswa_id, mapel_id, semester, tahun_ajaran)
-);
-
--- 11. PPDB
-CREATE TABLE IF NOT EXISTS ppdb (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  nama_siswa TEXT NOT NULL,
-  nik TEXT NOT NULL,
-  nisn TEXT,
-  tempat_lahir TEXT NOT NULL,
-  tanggal_lahir DATE NOT NULL,
-  jenis_kelamin CHAR(1) CHECK (jenis_kelamin IN ('L','P')),
-  alamat TEXT,
-  nama_ortu TEXT NOT NULL,
-  phone_ortu TEXT NOT NULL,
-  email_ortu TEXT,
-  sekolah_asal TEXT,
-  status TEXT DEFAULT 'pending' CHECK (status IN ('pending','diterima','ditolak')),
-  catatan_admin TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 12. PENGUMUMAN
-CREATE TABLE IF NOT EXISTS pengumuman (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  judul TEXT NOT NULL,
-  isi TEXT NOT NULL,
-  kategori TEXT DEFAULT 'Umum',
-  target_role TEXT DEFAULT 'all' CHECK (target_role IN ('all','guru','ortu')),
-  is_published BOOLEAN DEFAULT true,
-  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-  created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- ============================================================
--- ROW LEVEL SECURITY (RLS)
--- ============================================================
-ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE siswa ENABLE ROW LEVEL SECURITY;
-ALTER TABLE guru ENABLE ROW LEVEL SECURITY;
-ALTER TABLE kelas ENABLE ROW LEVEL SECURITY;
-ALTER TABLE absensi ENABLE ROW LEVEL SECURITY;
-ALTER TABLE nilai ENABLE ROW LEVEL SECURITY;
-ALTER TABLE izin ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ppdb ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pengumuman ENABLE ROW LEVEL SECURITY;
-ALTER TABLE mata_pelajaran ENABLE ROW LEVEL SECURITY;
-ALTER TABLE jadwal_pelajaran ENABLE ROW LEVEL SECURITY;
-ALTER TABLE ortu_siswa ENABLE ROW LEVEL SECURITY;
-
--- Helper function
-CREATE OR REPLACE FUNCTION get_user_role()
-RETURNS TEXT AS $$
-  SELECT role FROM profiles WHERE user_id = auth.uid()
-$$ LANGUAGE SQL SECURITY DEFINER;
-
--- PROFILES policies
-CREATE POLICY "Users can read own profile" ON profiles FOR SELECT USING (user_id = auth.uid());
-CREATE POLICY "Admins read all profiles" ON profiles FOR SELECT USING (get_user_role() = 'admin');
-CREATE POLICY "Users update own profile" ON profiles FOR UPDATE USING (user_id = auth.uid());
-CREATE POLICY "Admins manage profiles" ON profiles FOR ALL USING (get_user_role() = 'admin');
-
--- SISWA policies
-CREATE POLICY "Admin full access siswa" ON siswa FOR ALL USING (get_user_role() = 'admin');
-CREATE POLICY "Guru read siswa" ON siswa FOR SELECT USING (get_user_role() IN ('admin','guru'));
-CREATE POLICY "Ortu read own children" ON siswa FOR SELECT USING (
-  id IN (SELECT siswa_id FROM ortu_siswa WHERE user_id = auth.uid())
-);
-
--- GURU policies
-CREATE POLICY "Admin full access guru" ON guru FOR ALL USING (get_user_role() = 'admin');
-CREATE POLICY "Guru read all guru" ON guru FOR SELECT USING (get_user_role() IN ('admin','guru','ortu'));
-
--- KELAS policies
-CREATE POLICY "Admin full access kelas" ON kelas FOR ALL USING (get_user_role() = 'admin');
-CREATE POLICY "All roles read kelas" ON kelas FOR SELECT USING (get_user_role() IS NOT NULL);
-
--- ABSENSI policies
-CREATE POLICY "Admin full access absensi" ON absensi FOR ALL USING (get_user_role() = 'admin');
-CREATE POLICY "Guru manage absensi" ON absensi FOR ALL USING (get_user_role() = 'guru');
-CREATE POLICY "Ortu read own child absensi" ON absensi FOR SELECT USING (
-  siswa_id IN (SELECT siswa_id FROM ortu_siswa WHERE user_id = auth.uid())
-);
-
--- NILAI policies
-CREATE POLICY "Admin full access nilai" ON nilai FOR ALL USING (get_user_role() = 'admin');
-CREATE POLICY "Guru manage nilai" ON nilai FOR ALL USING (get_user_role() = 'guru');
-CREATE POLICY "Ortu read own child nilai" ON nilai FOR SELECT USING (
-  siswa_id IN (SELECT siswa_id FROM ortu_siswa WHERE user_id = auth.uid())
-);
-
--- IZIN policies
-CREATE POLICY "Admin full access izin" ON izin FOR ALL USING (get_user_role() = 'admin');
-CREATE POLICY "Guru read izin" ON izin FOR SELECT USING (get_user_role() = 'guru');
-CREATE POLICY "Ortu manage own izin" ON izin FOR ALL USING (user_id = auth.uid());
-
--- PPDB policies
-CREATE POLICY "Admin full access ppdb" ON ppdb FOR ALL USING (get_user_role() = 'admin');
-CREATE POLICY "Public insert ppdb" ON ppdb FOR INSERT WITH CHECK (true);
-CREATE POLICY "User read own ppdb" ON ppdb FOR SELECT USING (user_id = auth.uid() OR get_user_role() = 'admin');
-
--- PENGUMUMAN policies
-CREATE POLICY "Admin manage pengumuman" ON pengumuman FOR ALL USING (get_user_role() = 'admin');
-CREATE POLICY "All read published pengumuman" ON pengumuman FOR SELECT USING (is_published = true);
-
--- MATA PELAJARAN policies
-CREATE POLICY "Admin full access mapel" ON mata_pelajaran FOR ALL USING (get_user_role() = 'admin');
-CREATE POLICY "All read mapel" ON mata_pelajaran FOR SELECT USING (true);
-
--- JADWAL policies
-CREATE POLICY "Admin full access jadwal" ON jadwal_pelajaran FOR ALL USING (get_user_role() = 'admin');
-CREATE POLICY "All read jadwal" ON jadwal_pelajaran FOR SELECT USING (true);
-
--- ORTU_SISWA policies
-CREATE POLICY "Admin full access ortu_siswa" ON ortu_siswa FOR ALL USING (get_user_role() = 'admin');
-CREATE POLICY "Ortu read own links" ON ortu_siswa FOR SELECT USING (user_id = auth.uid());
-
--- ============================================================
--- AUTO-CREATE PROFILE ON SIGNUP
--- ============================================================
-CREATE OR REPLACE FUNCTION handle_new_user()
-RETURNS TRIGGER AS $$
+-- Auto-create profile on signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
-  INSERT INTO profiles (user_id, full_name, role)
+  INSERT INTO public.profiles (id, email, full_name, role)
   VALUES (
     NEW.id,
+    NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.email),
     COALESCE(NEW.raw_user_meta_data->>'role', 'ortu')
-  );
+  )
+  ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$;
 
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
--- ============================================================
--- SEED DATA: MATA PELAJARAN
--- ============================================================
-INSERT INTO mata_pelajaran (nama, kode, kkm) VALUES
-  ('Matematika', 'MTK', 75),
-  ('Bahasa Indonesia', 'BIND', 75),
-  ('IPA', 'IPA', 70),
-  ('IPS', 'IPS', 70),
-  ('PKn', 'PKN', 75),
-  ('Bahasa Arab', 'ARAB', 70),
-  ('Qur''an Hadits', 'QURAN', 75),
-  ('Fiqih', 'FIQIH', 75),
-  ('Aqidah Akhlak', 'AQIDAH', 75),
-  ('SKI', 'SKI', 70),
-  ('PJOK', 'PJOK', 70),
-  ('SBdP', 'SBDP', 70),
-  ('Bahasa Inggris', 'BING', 70)
-ON CONFLICT (kode) DO NOTHING;
+-- ─── 2. GURU ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.guru (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nip                  TEXT UNIQUE,
+  nama                 TEXT NOT NULL,
+  jenis_kelamin        CHAR(1) NOT NULL DEFAULT 'L' CHECK (jenis_kelamin IN ('L','P')),
+  tempat_lahir         TEXT,
+  tanggal_lahir        DATE,
+  alamat               TEXT,
+  jabatan              TEXT,
+  mapel                TEXT,
+  status_kepegawaian   TEXT NOT NULL DEFAULT 'GTT' CHECK (status_kepegawaian IN ('PNS','GTT','PTT','P3K')),
+  no_hp                TEXT,
+  email                TEXT,
+  foto_url             TEXT,
+  user_id              UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at           TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ─── 3. KELAS ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.kelas (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nama_kelas     TEXT NOT NULL,
+  tingkat        INT NOT NULL CHECK (tingkat BETWEEN 1 AND 6),
+  wali_kelas_id  UUID REFERENCES public.guru(id) ON DELETE SET NULL,
+  tahun_ajaran   TEXT NOT NULL DEFAULT '2024/2025',
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(nama_kelas, tahun_ajaran)
+);
+
+-- ─── 4. SISWA ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.siswa (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nisn            TEXT NOT NULL,
+  nik             TEXT,
+  nama            TEXT NOT NULL,
+  jenis_kelamin   CHAR(1) NOT NULL DEFAULT 'L' CHECK (jenis_kelamin IN ('L','P')),
+  tempat_lahir    TEXT,
+  tanggal_lahir   DATE,
+  alamat          TEXT,
+  kelas_id        UUID REFERENCES public.kelas(id) ON DELETE SET NULL,
+  status          TEXT NOT NULL DEFAULT 'aktif' CHECK (status IN ('aktif','nonaktif','lulus','pindah')),
+  foto_url        TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_siswa_kelas ON public.siswa(kelas_id);
+CREATE INDEX IF NOT EXISTS idx_siswa_status ON public.siswa(status);
+
+-- ─── 5. WALI SISWA (link ortu akun ke siswa) ────────────────
+CREATE TABLE IF NOT EXISTS public.wali_siswa (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  siswa_id    UUID NOT NULL REFERENCES public.siswa(id) ON DELETE CASCADE,
+  hubungan    TEXT NOT NULL DEFAULT 'wali' CHECK (hubungan IN ('ayah','ibu','wali')),
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, siswa_id)
+);
+
+-- ─── 6. ABSENSI ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.absensi (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  siswa_id     UUID NOT NULL REFERENCES public.siswa(id) ON DELETE CASCADE,
+  kelas_id     UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
+  tanggal      DATE NOT NULL,
+  status       CHAR(1) NOT NULL CHECK (status IN ('H','S','I','A')),
+  keterangan   TEXT,
+  dibuat_oleh  UUID REFERENCES auth.users(id),
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(siswa_id, tanggal)
+);
+
+CREATE INDEX IF NOT EXISTS idx_absensi_siswa ON public.absensi(siswa_id);
+CREATE INDEX IF NOT EXISTS idx_absensi_kelas_tgl ON public.absensi(kelas_id, tanggal);
+
+-- ─── 7. NILAI ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.nilai (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  siswa_id      UUID NOT NULL REFERENCES public.siswa(id) ON DELETE CASCADE,
+  kelas_id      UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
+  mapel         TEXT NOT NULL,
+  semester      TEXT NOT NULL CHECK (semester IN ('1','2')),
+  tahun_ajaran  TEXT NOT NULL DEFAULT '2024/2025',
+  nilai_uts     NUMERIC(5,2),
+  nilai_uas     NUMERIC(5,2),
+  nilai_tugas   NUMERIC(5,2),
+  nilai_harian  NUMERIC(5,2),
+  nilai_akhir   NUMERIC(5,2),
+  predikat      CHAR(1),
+  dibuat_oleh   UUID REFERENCES auth.users(id),
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(siswa_id, kelas_id, mapel, semester, tahun_ajaran)
+);
+
+CREATE INDEX IF NOT EXISTS idx_nilai_siswa ON public.nilai(siswa_id);
+CREATE INDEX IF NOT EXISTS idx_nilai_kelas ON public.nilai(kelas_id, mapel, semester);
+
+-- ─── 8. IZIN ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.izin (
+  id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  siswa_id          UUID NOT NULL REFERENCES public.siswa(id) ON DELETE CASCADE,
+  ortu_id           UUID NOT NULL REFERENCES auth.users(id),
+  tanggal_mulai     DATE NOT NULL,
+  tanggal_selesai   DATE NOT NULL,
+  jenis             TEXT NOT NULL DEFAULT 'izin' CHECK (jenis IN ('sakit','izin','dispensasi')),
+  keterangan        TEXT NOT NULL,
+  status            TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','disetujui','ditolak')),
+  diproses_oleh     UUID REFERENCES auth.users(id),
+  created_at        TIMESTAMPTZ DEFAULT NOW(),
+  CHECK (tanggal_selesai >= tanggal_mulai)
+);
+
+CREATE INDEX IF NOT EXISTS idx_izin_siswa ON public.izin(siswa_id);
+CREATE INDEX IF NOT EXISTS idx_izin_status ON public.izin(status);
+
+-- ─── 9. PENGUMUMAN ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.pengumuman (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  judul        TEXT NOT NULL,
+  isi          TEXT NOT NULL,
+  kategori     TEXT NOT NULL DEFAULT 'Umum',
+  target_role  TEXT NOT NULL DEFAULT 'semua' CHECK (target_role IN ('semua','guru','ortu')),
+  dibuat_oleh  UUID REFERENCES auth.users(id),
+  tanggal      DATE NOT NULL DEFAULT CURRENT_DATE,
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ─── 10. PPDB PENDAFTARAN ───────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.ppdb_pendaftaran (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nama_siswa      TEXT NOT NULL,
+  nisn            TEXT,
+  nik             TEXT,
+  jenis_kelamin   CHAR(1) NOT NULL DEFAULT 'L' CHECK (jenis_kelamin IN ('L','P')),
+  tempat_lahir    TEXT,
+  tanggal_lahir   DATE,
+  alamat          TEXT,
+  nama_ayah       TEXT,
+  nama_ibu        TEXT,
+  nama_wali       TEXT,
+  no_hp           TEXT NOT NULL,
+  email           TEXT,
+  status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','diterima','ditolak')),
+  catatan         TEXT,
+  created_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ─── 11. JADWAL PELAJARAN ───────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.jadwal (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kelas_id    UUID NOT NULL REFERENCES public.kelas(id) ON DELETE CASCADE,
+  guru_id     UUID REFERENCES public.guru(id) ON DELETE SET NULL,
+  mapel       TEXT NOT NULL,
+  hari        TEXT NOT NULL CHECK (hari IN ('Senin','Selasa','Rabu','Kamis','Jumat','Sabtu')),
+  jam_mulai   TIME NOT NULL,
+  jam_selesai TIME NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ══════════════════════════════════════════════════════════════
+-- ROW LEVEL SECURITY (RLS)
+-- ══════════════════════════════════════════════════════════════
+
+ALTER TABLE public.profiles          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.guru              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.kelas             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.siswa             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wali_siswa        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.absensi           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.nilai             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.izin              ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pengumuman        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ppdb_pendaftaran  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.jadwal            ENABLE ROW LEVEL SECURITY;
+
+-- Helper: get current user's role
+CREATE OR REPLACE FUNCTION public.current_user_role()
+RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT role FROM public.profiles WHERE id = auth.uid()
+$$;
+
+-- ── PROFILES ────────────────────────────────────────────────
+CREATE POLICY "profiles_select_own" ON public.profiles
+  FOR SELECT USING (id = auth.uid() OR current_user_role() = 'admin');
+
+CREATE POLICY "profiles_update_own" ON public.profiles
+  FOR UPDATE USING (id = auth.uid());
+
+CREATE POLICY "profiles_admin_all" ON public.profiles
+  FOR ALL USING (current_user_role() = 'admin');
+
+-- ── GURU ────────────────────────────────────────────────────
+CREATE POLICY "guru_read_authenticated" ON public.guru
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+CREATE POLICY "guru_write_admin" ON public.guru
+  FOR ALL USING (current_user_role() = 'admin');
+
+-- ── KELAS ───────────────────────────────────────────────────
+CREATE POLICY "kelas_read_authenticated" ON public.kelas
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+CREATE POLICY "kelas_write_admin" ON public.kelas
+  FOR ALL USING (current_user_role() = 'admin');
+
+-- ── SISWA ───────────────────────────────────────────────────
+-- Admin: full access
+CREATE POLICY "siswa_admin_all" ON public.siswa
+  FOR ALL USING (current_user_role() = 'admin');
+
+-- Guru: bisa baca semua siswa
+CREATE POLICY "siswa_guru_read" ON public.siswa
+  FOR SELECT USING (current_user_role() = 'guru');
+
+-- Ortu: hanya bisa lihat anak sendiri
+CREATE POLICY "siswa_ortu_read_own" ON public.siswa
+  FOR SELECT USING (
+    current_user_role() = 'ortu' AND
+    id IN (SELECT siswa_id FROM public.wali_siswa WHERE user_id = auth.uid())
+  );
+
+-- Public insert for PPDB (tidak perlu login untuk daftar)
+CREATE POLICY "ppdb_public_insert" ON public.ppdb_pendaftaran
+  FOR INSERT WITH CHECK (true);
+
+CREATE POLICY "ppdb_public_select_by_id" ON public.ppdb_pendaftaran
+  FOR SELECT USING (true);
+
+CREATE POLICY "ppdb_admin_all" ON public.ppdb_pendaftaran
+  FOR ALL USING (current_user_role() = 'admin');
+
+-- ── WALI SISWA ──────────────────────────────────────────────
+CREATE POLICY "wali_siswa_own" ON public.wali_siswa
+  FOR SELECT USING (user_id = auth.uid() OR current_user_role() IN ('admin','guru'));
+
+CREATE POLICY "wali_siswa_admin_all" ON public.wali_siswa
+  FOR ALL USING (current_user_role() = 'admin');
+
+-- ── ABSENSI ─────────────────────────────────────────────────
+CREATE POLICY "absensi_admin_all" ON public.absensi
+  FOR ALL USING (current_user_role() = 'admin');
+
+CREATE POLICY "absensi_guru_all" ON public.absensi
+  FOR ALL USING (current_user_role() = 'guru');
+
+CREATE POLICY "absensi_ortu_read_own" ON public.absensi
+  FOR SELECT USING (
+    current_user_role() = 'ortu' AND
+    siswa_id IN (SELECT siswa_id FROM public.wali_siswa WHERE user_id = auth.uid())
+  );
+
+-- ── NILAI ───────────────────────────────────────────────────
+CREATE POLICY "nilai_admin_all" ON public.nilai
+  FOR ALL USING (current_user_role() = 'admin');
+
+CREATE POLICY "nilai_guru_all" ON public.nilai
+  FOR ALL USING (current_user_role() = 'guru');
+
+CREATE POLICY "nilai_ortu_read_own" ON public.nilai
+  FOR SELECT USING (
+    current_user_role() = 'ortu' AND
+    siswa_id IN (SELECT siswa_id FROM public.wali_siswa WHERE user_id = auth.uid())
+  );
+
+-- ── IZIN ────────────────────────────────────────────────────
+CREATE POLICY "izin_admin_all" ON public.izin
+  FOR ALL USING (current_user_role() = 'admin');
+
+CREATE POLICY "izin_guru_all" ON public.izin
+  FOR ALL USING (current_user_role() = 'guru');
+
+CREATE POLICY "izin_ortu_own" ON public.izin
+  FOR ALL USING (
+    current_user_role() = 'ortu' AND
+    ortu_id = auth.uid()
+  );
+
+-- ── PENGUMUMAN ──────────────────────────────────────────────
+CREATE POLICY "pengumuman_public_read" ON public.pengumuman
+  FOR SELECT USING (
+    target_role = 'semua' OR
+    (auth.uid() IS NOT NULL AND (
+      target_role = current_user_role() OR
+      current_user_role() = 'admin'
+    ))
+  );
+
+CREATE POLICY "pengumuman_admin_write" ON public.pengumuman
+  FOR ALL USING (current_user_role() = 'admin');
+
+-- ── JADWAL ──────────────────────────────────────────────────
+CREATE POLICY "jadwal_read_authenticated" ON public.jadwal
+  FOR SELECT USING (auth.uid() IS NOT NULL);
+
+CREATE POLICY "jadwal_admin_all" ON public.jadwal
+  FOR ALL USING (current_user_role() = 'admin');
+
+-- ══════════════════════════════════════════════════════════════
+-- SEED DATA (Data awal / contoh)
+-- ══════════════════════════════════════════════════════════════
+
+-- Kelas
+INSERT INTO public.kelas (nama_kelas, tingkat, tahun_ajaran) VALUES
+  ('Kelas 1A', 1, '2024/2025'),
+  ('Kelas 1B', 1, '2024/2025'),
+  ('Kelas 2A', 2, '2024/2025'),
+  ('Kelas 2B', 2, '2024/2025'),
+  ('Kelas 3A', 3, '2024/2025'),
+  ('Kelas 3B', 3, '2024/2025'),
+  ('Kelas 4A', 4, '2024/2025'),
+  ('Kelas 4B', 4, '2024/2025'),
+  ('Kelas 5A', 5, '2024/2025'),
+  ('Kelas 5B', 5, '2024/2025'),
+  ('Kelas 6A', 6, '2024/2025'),
+  ('Kelas 6B', 6, '2024/2025')
+ON CONFLICT DO NOTHING;
+
+-- Guru contoh (tanpa user_id dulu)
+INSERT INTO public.guru (nip, nama, jenis_kelamin, jabatan, mapel, status_kepegawaian, no_hp) VALUES
+  ('198501012010011001', 'Drs. Ahmad Fauzi, M.Pd', 'L', 'Kepala Sekolah', NULL, 'PNS', '08123456781'),
+  ('199002022015012002', 'Siti Aisyah, S.Pd', 'P', 'Wali Kelas 1A', 'Matematika', 'PNS', '08123456782'),
+  ('198803032017011003', 'Budi Santoso, S.Pd.I', 'L', 'Wali Kelas 2A', 'Qur\'an Hadits', 'PNS', '08123456783'),
+  (NULL, 'Nur Hidayah, S.Pd', 'P', 'Guru Kelas', 'Bahasa Indonesia', 'GTT', '08123456784'),
+  (NULL, 'M. Rizky, S.Pd', 'L', 'Guru Kelas', 'IPA', 'GTT', '08123456785'),
+  ('199504052020012006', 'Rahma Dewi, S.Pd', 'P', 'Guru Kelas', 'IPS', 'PNS', '08123456786'),
+  (NULL, 'Yusuf Al-Farisi, S.Pd.I', 'L', 'Guru PAI', 'Fiqih, Aqidah', 'GTT', '08123456787'),
+  (NULL, 'Liana Sari, S.Pd', 'P', 'Guru PJOK', 'PJOK', 'GTT', '08123456788'),
+  (NULL, 'Hendra Wijaya', 'L', 'Staf TU', NULL, 'PTT', '08123456789'),
+  (NULL, 'Marlina, A.Md', 'P', 'Pustakawan', NULL, 'PTT', '08123456780')
+ON CONFLICT DO NOTHING;
+
+-- Pengumuman contoh
+INSERT INTO public.pengumuman (judul, isi, kategori, target_role, tanggal) VALUES
+  ('Jadwal Ujian Akhir Semester Genap 2024/2025', 'Ujian Akhir Semester Genap akan dilaksanakan pada tanggal 19-30 Mei 2025. Peserta didik diharapkan mempersiapkan diri dengan baik. Detail jadwal per mata pelajaran akan dibagikan melalui wali kelas masing-masing.', 'Akademik', 'semua', '2025-04-15'),
+  ('Pendaftaran PPDB Tahun Ajaran 2025/2026 Dibuka', 'Dengan hormat, kami informasikan bahwa Pendaftaran Peserta Didik Baru (PPDB) Tahun Ajaran 2025/2026 resmi dibuka mulai 1 Mei 2025. Pendaftaran dapat dilakukan secara online melalui website sekolah. Kuota terbatas!', 'PPDB', 'semua', '2025-04-10'),
+  ('Libur Hari Raya Idul Fitri 1446 H', 'Diberitahukan kepada seluruh warga sekolah bahwa kegiatan belajar mengajar akan diliburkan dalam rangka Hari Raya Idul Fitri 1446 H mulai tanggal 28 Maret - 12 April 2025.', 'Umum', 'semua', '2025-04-05'),
+  ('Rapat Koordinasi Guru - Semester Genap', 'Kepada seluruh bapak/ibu guru dan staf, diwajibkan menghadiri rapat koordinasi semester genap pada Sabtu, 3 Mei 2025 pukul 08.00 WIB di Ruang Guru.', 'Kepegawaian', 'guru', '2025-04-01')
+ON CONFLICT DO NOTHING;
+
+-- ══════════════════════════════════════════════════════════════
+-- CARA MEMBUAT AKUN ADMIN PERTAMA
+-- Jalankan ini SETELAH membuat akun via Supabase Auth:
+-- UPDATE public.profiles SET role = 'admin' WHERE email = 'admin@minsingkawang.sch.id';
+-- ══════════════════════════════════════════════════════════════
